@@ -4,8 +4,10 @@
  * the page is the one-line label of a hidden post, appended as the cell's last child.
  */
 
-const SCAN_MS = 650;
-const COLLAPSE_MS = 320;
+const SCAN_MS = 900;
+const COLLAPSE_MS = 380;
+/** Height of the scan band in content.css. */
+const BAND_PX = 56;
 
 export interface HideInfo {
   ruleName: string;
@@ -111,7 +113,7 @@ function animateOut(cell: HTMLElement, id: string | undefined, animate: boolean,
   if (content) {
     content.style.maxHeight = `${content.offsetHeight}px`;
     content.style.overflow = 'hidden';
-    cell.style.setProperty('--cf-scan-end', `${content.offsetHeight}px`);
+    cell.style.setProperty('--cf-scan-end', `${Math.max(0, content.offsetHeight - BAND_PX)}px`);
   }
   const stillOurs = () => cell.isConnected && cell.dataset.cfId === id && cell.dataset.cfView === 'hiding';
   setTimeout(() => {
