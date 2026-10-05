@@ -23,6 +23,7 @@ const executablePath = candidates.find((p) => existsSync(p));
 assert.ok(executablePath, 'No Chromium found. Set CHROMIUM_PATH.');
 
 const mock = await startMockOllaya(11435);
+const secured = await startMockOllaya(11436, { token: 'test-token' });
 const timeline = readFileSync(join(root, 'test', 'e2e', 'fake-x.html'), 'utf8');
 
 const context = await chromium.launchPersistentContext('', {
@@ -54,13 +55,35 @@ try {
     route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: timeline }),
   );
 
-  const options = context.pages().find((p) => p.url().includes('options.html')) ?? (await context.newPage());
-  await options.goto(`chrome-extension://${extId}/options.html`);
+  // The extension opens its settings tab on install; use that tab once it has loaded.
+  const optionsUrl = `chrome-extension://${extId}/options.html`;
+  const findOptions = () => context.pages().find((p) => p.url().startsWith(optionsUrl));
+  const options =
+    findOptions() ??
+    (await context.waitForEvent('page', { predicate: (p) => p.url().startsWith(optionsUrl), timeout: 5_000 }).catch(() => null)) ??
+    (await context.newPage());
+  if (!options.url().startsWith(optionsUrl)) await options.goto(optionsUrl);
+  await options.waitForLoadState('load');
+  await options.getByRole('button', { name: 'Test connection' }).waitFor();
 
   await step('settings page tests the connection to Ollaya', async () => {
     await options.getByRole('button', { name: 'Test connection' }).click();
     await options.getByText(/Connected\. laya:en answered in \d+ ms\./).waitFor({ timeout: 10_000 });
     assert.equal(mock.sawOrigin(), false, 'the Origin header should be removed from extension requests');
+  });
+
+  await step('your own server: a wrong token is reported, the right one connects', async () => {
+    await options.getByLabel('Your own server').check();
+    await options.getByRole('textbox', { name: 'Address', exact: true }).fill('http://localhost:11436');
+    await options.getByLabel('API key (optional)').fill('wrong');
+    await options.getByRole('button', { name: 'Test connection' }).click();
+
+    await options.getByText('The server did not accept the API key.').waitFor({ timeout: 10_000 });
+    await options.getByLabel('API key (optional)').fill('test-token');
+    await options.getByRole('button', { name: 'Test connection' }).click();
+    await options.getByText(/Connected\. laya:en answered in \d+ ms\./).waitFor({ timeout: 10_000 });
+    await options.getByLabel('Ollaya on this computer').check();
+    await options.getByText('Saved').waitFor();
   });
 
   await step('quick starts add rules', async () => {
@@ -139,6 +162,7 @@ try {
 } finally {
   await context.close();
   await mock.close();
+  await secured.close();
 }
 
 console.log(failed ? '\nSome checks failed.' : '\nAll end-to-end checks passed.');

@@ -3,13 +3,20 @@ import type { DecideResult, ReserveResult, Request, StatusResponse, TestResult }
 import { activeProvider, loadSettings, onSettingsChanged } from '../shared/settings';
 import type { ProviderConfig, Settings } from '../shared/types';
 import { decide, listModels, trimBase } from './backend';
-import { syncOriginRule } from './origin';
+import { originOf, syncOriginRules } from './origin';
 import { Scheduler } from './scheduler';
 import { bump, getStats, reserve } from './stats';
 
 const scheduler = new Scheduler();
 let settingsPromise: Promise<Settings> = loadSettings();
 let backendKey = '';
+/** Addresses tried with Test connection, kept so their requests also lose the Origin header. */
+const testedUrls = new Set<string>();
+let activeUrl = '';
+
+function syncOrigins(): Promise<void> {
+  return syncOriginRules([activeUrl, ...testedUrls]);
+}
 
 async function applySettings(s: Settings): Promise<void> {
   const { id, config } = activeProvider(s);
@@ -17,7 +24,8 @@ async function applySettings(s: Settings): Promise<void> {
   if (key !== backendKey) {
     backendKey = key;
     scheduler.reset();
-    await syncOriginRule(config.baseUrl);
+    activeUrl = config.baseUrl;
+    await syncOrigins();
     await setBadge(null);
   }
 }
@@ -73,6 +81,11 @@ async function runDecide(msg: Extract<Request, { type: 'decide' }>): Promise<Dec
 async function runTest(config?: ProviderConfig): Promise<TestResult> {
   const settings = await settingsPromise;
   const cfg = config ?? activeProvider(settings).config;
+  const origin = originOf(cfg.baseUrl);
+  if (origin && !testedUrls.has(origin)) {
+    testedUrls.add(origin);
+    await syncOrigins();
+  }
   const started = Date.now();
   const result = await decide(cfg, { post: 'Just finished a long walk by the river. The weather was perfect.' }, {
     test: { type: 'noul', instructions: 'Is `post` about the outdoors?' },

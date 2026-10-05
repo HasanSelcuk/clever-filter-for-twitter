@@ -66,12 +66,23 @@ function originOf(url: string): string | null {
   }
 }
 
-async function ensureAccess(url: string): Promise<boolean> {
+/**
+ * Asks for access to a server address. Firefox accepts permissions.request() only while it is
+ * handling a click, so callers must call this first in the handler, before any await. When access
+ * is already granted it resolves to true without a prompt.
+ */
+function requestAccess(url: string): Promise<boolean> {
   const origin = originOf(url);
-  if (!origin) return false;
-  const origins = [`${origin}/*`];
-  if (await ext.permissions.contains({ origins })) return true;
-  return ext.permissions.request({ origins });
+  if (!origin) return Promise.resolve(false);
+  try {
+    return ext.permissions.request({ origins: [`${origin}/*`] }).catch((err: unknown) => {
+      console.warn('[clever-filter] permission request failed', err);
+      return false;
+    });
+  } catch (err) {
+    console.warn('[clever-filter] permission request failed', err);
+    return Promise.resolve(false);
+  }
 }
 
 function textField(
@@ -187,7 +198,7 @@ function providerFields(id: ProviderId): HTMLElement {
           type: 'button',
           class: 'secondary',
           onclick: async () => {
-            const ok = await ensureAccess(config.baseUrl);
+            const ok = await requestAccess(config.baseUrl);
             accessNote.textContent = ok ? 'Access granted.' : 'Access was not granted. Check the address.';
           },
         },
@@ -212,17 +223,29 @@ function testLine(): HTMLElement | null {
   return h('p', { class: 'status error' }, r.error.message);
 }
 
-async function runTest(): Promise<void> {
+function onTestClick(): void {
   const id = settings.backend.provider;
-  const config = settings.backend[id];
-  if (id === 'custom' && !(await ensureAccess(config.baseUrl))) {
-    lastTest = { provider: id, result: { ok: false, error: { kind: 'permission', message: 'The extension needs access to this address first.' } } };
-    render();
-    return;
-  }
+  const config = { ...settings.backend[id] };
+  // Called before any await, so Firefox still sees the click.
+  const access = requestAccess(config.baseUrl);
+  void runTest(id, config, access);
+}
+
+async function runTest(id: ProviderId, config: ProviderConfig, access: Promise<boolean>): Promise<void> {
   testing = true;
   render();
-  const result = (await ext.runtime.sendMessage({ type: 'test', config })) as TestResult;
+  let result: TestResult;
+  if (!originOf(config.baseUrl)) {
+    result = { ok: false, error: { kind: 'no-server', message: 'Enter a server address that starts with https:// or http://.' } };
+  } else if (!(await access)) {
+    result = { ok: false, error: { kind: 'permission', message: 'The browser did not give the extension access to this address. Press Test connection again and allow it.' } };
+  } else {
+    try {
+      result = (await ext.runtime.sendMessage({ type: 'test', config })) as TestResult;
+    } catch (err) {
+      result = { ok: false, error: { kind: 'server', message: `The extension's background page did not answer: ${String(err)}` } };
+    }
+  }
   testing = false;
   lastTest = { provider: id, result };
   if (result.ok && result.models) modelOptions = result.models;
@@ -258,7 +281,7 @@ function serverSection(): HTMLElement {
     ),
     providerFields(current),
     h('datalist', { id: 'model-options' }, modelOptions.map((m) => h('option', { value: m }))),
-    h('div', { class: 'row' }, h('button', { type: 'button', onclick: runTest, disabled: testing }, 'Test connection'), testLine()),
+    h('div', { class: 'row' }, h('button', { type: 'button', onclick: onTestClick, disabled: testing }, 'Test connection'), testLine()),
     h('p', { class: 'hint' }, 'Only the text of each post goes to the server. Your account, your feed list and your API key stay in this browser, except that the key is sent to the server it belongs to.'),
   );
 }

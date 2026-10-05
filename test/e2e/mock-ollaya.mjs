@@ -12,7 +12,7 @@ function score(instructions, post) {
   return 0.1;
 }
 
-export async function startMockOllaya(port) {
+export async function startMockOllaya(port, { token } = {}) {
   let originSeen = false;
   const posts = [];
   const server = createServer((req, res) => {
@@ -28,6 +28,11 @@ export async function startMockOllaya(port) {
     if (req.method === 'GET' && req.url === '/') {
       res.writeHead(200, { 'content-type': 'text/plain' });
       return res.end('Ollaya is running');
+    }
+    // OLLAYA_API_KEY: every request except GET / needs the bearer token.
+    if (token && req.headers.authorization !== `Bearer ${token}`) {
+      res.setHeader('WWW-Authenticate', 'Bearer');
+      return send(401, { error: 'unauthorized', code: 'UNAUTHORIZED' });
     }
     if (req.method === 'GET' && req.url === '/v1/models') {
       return send(200, { models: [{ name: 'laya:en', description: '', release_date: '2026-09-20' }, { name: 'laya:latest', description: '', release_date: '2026-09-20' }] });
