@@ -84,6 +84,19 @@ function render(status: StatusResponse | null): void {
             ),
           ),
         ),
+    h(
+      'label',
+      { class: 'test-toggle' },
+      h('input', {
+        type: 'checkbox',
+        checked: settings.test.panels,
+        onchange: async (e: Event) => {
+          settings.test.panels = (e.target as HTMLInputElement).checked;
+          await saveSettings(settings);
+        },
+      }),
+      h('span', null, h('strong', null, 'Test mode'), h('span', null, 'Shows a panel next to each post with its status, probabilities and timings.')),
+    ),
     h('button', { type: 'button', onclick: () => ext.runtime.openOptionsPage() }, 'Settings'),
   );
 }

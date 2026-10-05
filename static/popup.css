@@ -22,3 +22,15 @@ h2 { font-size: 14px; margin-top: 4px; }
 .tag-bookmark, .tag-like { color: var(--accent); border-color: var(--accent); }
 main > button { margin-top: 4px; }
 .status.error { padding: 8px 10px; border: 1px solid var(--error); border-radius: 6px; }
+.test-toggle {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.test-toggle input { margin-top: 3px; }
+.test-toggle span { display: flex; flex-direction: column; font-size: 13px; }
+.test-toggle span span { color: var(--muted); }

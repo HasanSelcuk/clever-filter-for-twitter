@@ -1,5 +1,5 @@
 import { OLLAYA_KEEP_ALIVE, REQUEST_TIMEOUT_MS } from '../shared/config';
-import type { BackendError, DecideResult } from '../shared/messages';
+import type { BackendError, DecideMeta, DecideResult } from '../shared/messages';
 import type { NoulQuestion, PostState, ProviderConfig } from '../shared/types';
 
 export interface HttpRequest {
@@ -191,6 +191,7 @@ export interface SendOutcome {
   status: number;
   body: unknown;
   headers: Headers | null;
+  attempts: number;
   error?: BackendError;
 }
 
@@ -225,6 +226,7 @@ export async function send(
         status: 0,
         body: undefined,
         headers: null,
+        attempts: attempt + 1,
         error: timedOut
           ? { kind: 'timeout', message: `${host} took longer than ${REQUEST_TIMEOUT_MS / 1000} seconds to answer.` }
           : {
@@ -242,13 +244,20 @@ export async function send(
     } finally {
       clearTimeout(timer);
     }
-    if (res.ok) return { ok: true, status: res.status, body, headers: res.headers };
+    if (res.ok) return { ok: true, status: res.status, body, headers: res.headers, attempts: attempt + 1 };
     if (attempt < retries && isRetryable(res.status)) {
       const wait = retryAfterMs(res.headers);
       await sleep(wait !== undefined && wait <= 60_000 ? wait : 500 * 2 ** attempt);
       continue;
     }
-    return { ok: false, status: res.status, body, headers: res.headers, error: classifyHttpError(res.status, body, config) };
+    return {
+      ok: false,
+      status: res.status,
+      body,
+      headers: res.headers,
+      attempts: attempt + 1,
+      error: classifyHttpError(res.status, body, config),
+    };
   }
 }
 
@@ -263,10 +272,29 @@ export async function decide(
   }
   const started = Date.now();
   const out = await send(buildDecideRequest(config, state, questions), config, fetchImpl);
-  if (!out.ok) return { ok: false, error: out.error! };
+  const meta = { ...serverMeta(out.body), attempts: out.attempts };
+  if (!out.ok) return { ok: false, error: out.error!, meta };
   const parsed = parseDecideResponse(out.body, Object.keys(questions));
-  if ('kind' in parsed) return { ok: false, error: parsed };
-  return { ok: true, ...parsed, ms: Date.now() - started };
+  if ('kind' in parsed) return { ok: false, error: parsed, meta };
+  return { ok: true, ...parsed, ms: Date.now() - started, meta };
+}
+
+const nsToMs = (v: unknown): number | undefined =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.round(v / 1e5) / 10 : undefined;
+
+/** Timing fields Ollaya's /api/decide adds to its answer. TypeSafe sends only token usage. */
+export function serverMeta(body: unknown): Omit<DecideMeta, 'attempts'> {
+  if (typeof body !== 'object' || body === null) return {};
+  const b = body as Record<string, unknown>;
+  const usage = b.usage as { input_tokens?: unknown } | undefined;
+  const routing = b.routing as { route?: unknown } | null | undefined;
+  return {
+    serverTotalMs: nsToMs(b.total_duration),
+    serverEvalMs: nsToMs(b.eval_duration),
+    serverLoadMs: nsToMs(b.load_duration),
+    inputTokens: typeof usage?.input_tokens === 'number' ? usage.input_tokens : undefined,
+    route: typeof routing?.route === 'string' ? routing.route : undefined,
+  };
 }
 
 export async function listModels(config: ProviderConfig, fetchImpl?: Fetch): Promise<string[] | BackendError> {

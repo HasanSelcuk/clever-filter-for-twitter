@@ -663,10 +663,10 @@ function checksSection(): HTMLElement {
 
 // ---------- Pages, display, actions ----------
 
-const PAGE_LABELS: Record<keyof Settings['pages'], string> = {
+/** Replies under a post are left out for now. */
+const PAGE_LABELS: Partial<Record<keyof Settings['pages'], string>> = {
   home: 'Home timeline (For you and Following)',
   search: 'Search results',
-  replies: 'Replies under a post',
   lists: 'Lists',
   profile: 'Profiles',
 };
@@ -718,7 +718,7 @@ function pagesSection(): HTMLElement {
       'div',
       { class: 'stack' },
       (Object.keys(PAGE_LABELS) as (keyof Settings['pages'])[]).map((k) =>
-        checkbox(PAGE_LABELS[k], settings.pages[k], (v) => (settings.pages[k] = v)),
+        checkbox(PAGE_LABELS[k]!, settings.pages[k], (v) => (settings.pages[k] = v)),
       ),
     ),
   );
@@ -746,6 +746,7 @@ function displaySection(): HTMLElement {
         'Remove hidden posts with no note',
       ),
       checkbox('Show the filter at work: a bar on posts being checked, a scan line on posts being hidden, and a note on posts it liked or bookmarked', d.animation, (v) => (d.animation = v)),
+      checkbox('Test mode: show a panel next to each post with its status, probabilities and timings', settings.test.panels, (v) => (settings.test.panels = v)),
     ),
   );
 }

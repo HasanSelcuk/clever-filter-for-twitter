@@ -6,6 +6,8 @@ export const SEL = {
   tweet: 'article[data-testid="tweet"]',
   text: '[data-testid="tweetText"]',
   promoted: '[data-testid="placementTracking"]',
+  video: '[data-testid="videoPlayer"], [data-testid="videoComponent"], video',
+  photo: '[data-testid="tweetPhoto"]',
   like: '[data-testid="like"]',
   unlike: '[data-testid="unlike"]',
   bookmark: '[data-testid="bookmark"]',
@@ -50,6 +52,11 @@ export interface PostInfo {
   id: string;
   state: PostState;
   promoted: boolean;
+  /** The post quotes another post. Only the post's own text is checked. */
+  hasQuote: boolean;
+  media: ('video' | 'image')[];
+  /** Why the post is not checked, when it is not. */
+  skip: string | null;
 }
 
 /** The id of a post from its timestamp link. Promoted posts have none. */
@@ -70,20 +77,32 @@ function inQuote(el: Element, article: Element): boolean {
 
 export function readPost(article: Element): PostInfo | null {
   const id = postId(article);
-  const promoted = article.querySelector(SEL.promoted) !== null || article.closest(SEL.promoted) !== null;
   if (!id) return null;
+  const promoted = article.querySelector(SEL.promoted) !== null || article.closest(SEL.promoted) !== null;
   let main = '';
-  let quoted = '';
+  let hasQuote = false;
   for (const el of Array.from(article.querySelectorAll(SEL.text))) {
-    const text = readText(el).trim();
-    if (!text) continue;
-    if (inQuote(el, article)) quoted ||= text;
-    else main ||= text;
+    if (inQuote(el, article)) {
+      hasQuote = true;
+      continue;
+    }
+    main ||= readText(el).trim();
   }
-  if (!main && !quoted) return { id, state: { post: '' }, promoted };
-  const state: PostState = { post: main || quoted };
-  if (main && quoted) state.quoted_post = quoted;
-  return { id, state, promoted };
+  // A quote card can also hold only media, with no text block.
+  if (!hasQuote) {
+    hasQuote = Array.from(article.querySelectorAll('div[role="link"]')).some((card) => card.querySelector('time') !== null);
+  }
+  const media: PostInfo['media'] = [];
+  if (article.querySelector(SEL.video)) media.push('video');
+  // X puts videos inside the same tweetPhoto box it uses for photos.
+  const photos = Array.from(article.querySelectorAll(SEL.photo));
+  if (photos.some((box) => !box.querySelector(SEL.video))) media.push('image');
+  let skip: string | null = null;
+  if (promoted) skip = 'promoted post';
+  else if (!main && hasQuote) skip = 'no text of its own, only a quoted post';
+  else if (!main && media.length) skip = `no text, ${media.join(' and ')} only`;
+  else if (!main) skip = 'no text';
+  return { id, state: { post: main }, promoted, hasQuote, media, skip };
 }
 
 export function cellOf(article: Element): HTMLElement | null {

@@ -141,3 +141,56 @@ html[data-cf-animate] [data-cf-view="hidden"] > .cf-label {
     display: none;
   }
 }
+
+/* Test mode: details panels beside posts. */
+.cf-test-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+}
+
+.cf-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 300px;
+  max-height: 80vh;
+  overflow: auto;
+  padding: 6px 8px 8px;
+  pointer-events: auto;
+  font: 11px/15px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #e7e9ea;
+  background: rgba(15, 20, 25, 0.94);
+  border: 1px solid #38444d;
+  border-left: 4px solid #8b98a5;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  will-change: transform;
+}
+.cf-panel[data-status="pass"] { border-left-color: #00ba7c; }
+.cf-panel[data-status="hidden"] { border-left-color: #ff7a00; }
+.cf-panel[data-status="action"] { border-left-color: #1d9bf0; }
+.cf-panel[data-status="wait"] { border-left-color: #ffd400; }
+.cf-panel[data-status="fail"] { border-left-color: #f4212e; }
+.cf-panel[data-status="skip"] { border-left-color: #536471; }
+
+.cf-panel-status { margin-bottom: 4px; font-weight: 700; white-space: normal; }
+.cf-panel { cursor: pointer; }
+.cf-panel-summary { color: #c4cbd1; }
+.cf-panel-lines { display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; }
+.cf-k { color: #8b98a5; white-space: pre; overflow: hidden; text-overflow: ellipsis; max-width: 130px; }
+.cf-k.cf-rule { color: #e7e9ea; font-weight: 700; padding-top: 3px; }
+.cf-v { word-break: break-word; }
+.cf-v.cf-yes { color: #7ee2b8; }
+.cf-panel-text { margin-top: 4px; color: #8b98a5; white-space: pre-wrap; word-break: break-word; }
+.cf-panel-copy {
+  margin-top: 6px;
+  padding: 1px 8px;
+  font: inherit;
+  color: #e7e9ea;
+  background: transparent;
+  border: 1px solid #536471;
+  border-radius: 4px;
+  cursor: pointer;
+}

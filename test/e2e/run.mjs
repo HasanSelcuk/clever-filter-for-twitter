@@ -29,7 +29,7 @@ const timeline = readFileSync(join(root, 'test', 'e2e', 'fake-x.html'), 'utf8');
 const context = await chromium.launchPersistentContext('', {
   executablePath,
   headless: true,
-  viewport: { width: 900, height: 1000 },
+  viewport: { width: 1300, height: 1000 },
   args: [`--disable-extensions-except=${extDir}`, `--load-extension=${extDir}`],
 });
 
@@ -131,6 +131,39 @@ try {
   await step('a post far below the screen is not liked', async () => {
     await page.waitForTimeout(2_000);
     assert.equal(await page.evaluate(() => window.likeClicks['1099'] ?? 0), 0);
+  });
+
+  await step('only the post\'s own text is checked: quoted posts and video-only posts are skipped', async () => {
+    await page.locator('[data-cf-id="1007"][data-cf-state="done"]').waitFor({ timeout: 10_000 });
+    assert.equal(await page.locator('[data-cf-id="1007"]').getAttribute('data-cf-view'), null, 'quoting slop is not slop');
+    assert.equal(mock.askedAbout('Unlock your potential with these game-changing hacks'), false, 'the quoted text is never sent');
+    assert.equal(await page.locator('[data-cf-id="1005"]').getAttribute('data-cf-state'), 'skipped');
+    await page.locator('[data-cf-id="1006"][data-cf-state="done"]').waitFor({ timeout: 10_000 });
+    assert.equal(mock.askedAbout('A fox walked past'), true, 'a video post with text is checked');
+  });
+
+  await step('test mode shows a panel beside each post', async () => {
+    const popup = await context.newPage();
+    await popup.goto(`chrome-extension://${extId}/popup.html`);
+    await popup.getByLabel(/Test mode/).check();
+    await popup.close();
+    await page.bringToFront();
+    const panel = (status) => page.locator('.cf-panel', { has: page.locator('.cf-panel-status', { hasText: status }) });
+    await panel('Checked: passed').first().waitFor({ timeout: 5_000 });
+    await page.locator('[data-cf-id="1005"]').scrollIntoViewIfNeeded();
+
+    await panel('Skipped: no text, video only').waitFor();
+    await page.evaluate(() => scrollTo(0, 0));
+    const compact = await panel('Checked: passed').first().innerText();
+    assert.match(compact, /AI slop \d+\.\d% · Thoughtful post \d+\.\d%/);
+    assert.match(compact, /found \d\d:\d\d:\d\d\.\d{3} · answer in \d+ ms · server \d/);
+    await panel('Checked: passed').first().click();
+    const passed = await panel('Checked: passed').first().innerText();
+    for (const word of ['found', 'asked', 'sent', 'answered', 'shown', 'laya:en', 'AI slop', '(yes at 80%)']) {
+      assert.ok(passed.includes(word), `panel shows "${word}":\n${passed}`);
+    }
+    assert.match(passed, /answered\s+\d\d:\d\d:\d\d\.\d{3} \+\d+ ms \(server \d/);
+    await page.screenshot({ path: join(shots, 'test-mode.png') });
   });
 
   await step('Show reveals a hidden post and Hide folds it again', async () => {

@@ -72,7 +72,13 @@ async function runDecide(msg: Extract<Request, { type: 'decide' }>): Promise<Dec
     void setBadge(error.message);
     return { ok: false, error };
   }
-  const result = await scheduler.submit(() => decide(config, msg.state, msg.questions), msg.priority);
+  const receivedAt = Date.now();
+  let sentAt: number | undefined;
+  const result = await scheduler.submit(() => {
+    sentAt = Date.now();
+    return decide(config, msg.state, msg.questions);
+  }, msg.priority);
+  result.meta = { attempts: 1, ...result.meta, receivedAt, sentAt, answeredAt: Date.now() };
   void setBadge(result.ok ? null : result.error.message);
   if (result.ok) void bump('checked');
   return result;

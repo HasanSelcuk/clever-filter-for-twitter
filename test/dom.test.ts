@@ -12,25 +12,45 @@ const header = (id: string) => `<a href="/someone/status/${id}"><time datetime="
 describe('readPost', () => {
   it('reads id and text, with emoji from alt text', () => {
     const a = article(`${header('111')}<div data-testid="tweetText"><span>Hello </span><img alt="👋"><span> world</span></div>`);
-    expect(readPost(a)).toEqual({ id: '111', state: { post: 'Hello 👋 world' }, promoted: false });
+    expect(readPost(a)).toEqual({
+      id: '111',
+      state: { post: 'Hello 👋 world' },
+      promoted: false,
+      hasQuote: false,
+      media: [],
+      skip: null,
+    });
   });
 
-  it('separates a quoted post', () => {
+  it('checks only the post\'s own text, never the quoted post', () => {
     const a = article(
       `${header('222')}<div data-testid="tweetText">My take</div>` +
         `<div role="link" tabindex="0">${header('333')}<div data-testid="tweetText">Original</div></div>`,
     );
-    expect(readPost(a)?.state).toEqual({ post: 'My take', quoted_post: 'Original' });
-    expect(readPost(a)?.id).toBe('222');
+    expect(readPost(a)).toMatchObject({ id: '222', state: { post: 'My take' }, hasQuote: true, skip: null });
   });
 
-  it('uses the quote as the post when the post has no text', () => {
+  it('skips a post that only quotes another post', () => {
     const a = article(`${header('444')}<div role="link">${header('555')}<div data-testid="tweetText">Only quote</div></div>`);
-    expect(readPost(a)?.state).toEqual({ post: 'Only quote' });
+    expect(readPost(a)).toMatchObject({ state: { post: '' }, skip: 'no text of its own, only a quoted post' });
+  });
+
+  it('skips video and image posts without text, and keeps the ones with text', () => {
+    const video = '<div data-testid="tweetPhoto"><div data-testid="videoPlayer"><div data-testid="videoComponent"><video></video></div></div></div>';
+    expect(readPost(article(`${header('7')}${video}`))).toMatchObject({ media: ['video'], skip: 'no text, video only' });
+    expect(readPost(article(`${header('8')}<div data-testid="tweetText">Watch this</div>${video}`))).toMatchObject({
+      state: { post: 'Watch this' },
+      media: ['video'],
+      skip: null,
+    });
+    expect(readPost(article(`${header('9')}<div data-testid="tweetPhoto"></div>`))?.skip).toBe('no text, image only');
   });
 
   it('flags promoted posts and skips posts without a status link', () => {
-    expect(readPost(article(`${header('1')}<div data-testid="placementTracking"></div>`))?.promoted).toBe(true);
+    expect(readPost(article(`${header('1')}<div data-testid="tweetText">Buy</div><div data-testid="placementTracking"></div>`))).toMatchObject({
+      promoted: true,
+      skip: 'promoted post',
+    });
     expect(readPost(article('<div data-testid="tweetText">Ad</div>'))).toBeNull();
   });
 });

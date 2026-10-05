@@ -42,6 +42,14 @@
     { id: '1004', name: 'Brand', handle: 'brand', color: '#f4212e', promoted: true,
       text: 'Sponsored: unlock your game-changing growth today.' },
   ];
+  posts.push(
+    { id: '1005', name: 'Clips', handle: 'clips', color: '#f91880', video: true, text: '' },
+    { id: '1006', name: 'Trail Cam', handle: 'trailcam', color: '#00ba7c', video: true,
+      text: 'A fox walked past the camera at 3am. Sound on.' },
+    { id: '1007', name: 'Quoter', handle: 'quoter', color: '#ffd400',
+      text: 'Interesting read.',
+      quote: { id: '9001', handle: 'growthdaily', text: 'Unlock your potential with these game-changing hacks 🚀' } },
+  );
   for (let i = 0; i < 12; i++) {
     posts.push({ id: String(1010 + i), name: 'Filler ' + i, handle: 'filler' + i, color: '#536471',
       text: 'An ordinary post about lunch, number ' + i + '. Soup again.' });
@@ -61,7 +69,9 @@
           <div class="head" data-testid="User-Name"><b>${p.name}</b> @${p.handle} ·
             ${p.promoted ? '' : `<a href="/${p.handle}/status/${p.id}"><time datetime="2026-10-05T08:00:00Z">2h</time></a>`}
           </div>
-          <div data-testid="tweetText" lang="en"></div>
+          ${p.text ? '<div data-testid="tweetText" lang="en" class="own"></div>' : ''}
+          ${p.video ? '<div data-testid="tweetPhoto"><div data-testid="videoPlayer"><div data-testid="videoComponent"><video muted loop style="width:100%;height:180px;background:#16181c;border-radius:16px"></video></div></div></div>' : ''}
+          ${p.quote ? `<div role="link" tabindex="0" class="quote"><div class="head"><b>@${p.quote.handle}</b> · <a href="/${p.quote.handle}/status/${p.quote.id}"><time datetime="2026-10-04T08:00:00Z">1d</time></a></div><div data-testid="tweetText" class="quoted"></div></div>` : ''}
           <div class="bar" role="group">
             <button data-testid="reply">Reply</button>
             <button data-testid="retweet">Repost</button>
@@ -71,7 +81,8 @@
           ${p.promoted ? '<div data-testid="placementTracking" class="ad">Ad</div>' : ''}
         </div>
       </article></div>`;
-    cell.querySelector('[data-testid="tweetText"]').textContent = p.text;
+    if (p.text) cell.querySelector('.own').textContent = p.text;
+    if (p.quote) cell.querySelector('.quoted').textContent = p.quote.text;
     for (const b of cell.querySelectorAll('.bar button')) {
       b.addEventListener('click', () => {
         const id = b.dataset.testid;

@@ -55,9 +55,12 @@ export async function startMockOllaya(port, { token } = {}) {
           model: 'laya:en',
           answers,
           usage: { input_tokens: 40, output_tokens: 0 },
-          routing: null,
+          routing: { router: 'laya:latest', model: 'laya:en', route: 'english', reason: 'English Latin text' },
           state_truncated: false,
           done_reason: 'decide',
+          total_duration: 18_734_512,
+          load_duration: 0,
+          eval_duration: 16_302_117,
         }), 120);
       });
       return;

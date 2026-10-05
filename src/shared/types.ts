@@ -90,6 +90,10 @@ export interface Settings {
     /** Seconds a post must stay on screen before it gets liked or bookmarked. */
     dwellSeconds: number;
   };
+  /** Test mode: a details panel next to every post. */
+  test: {
+    panels: boolean;
+  };
 }
 
 /** A noul question in the wire format both APIs share. */

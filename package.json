@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "node scripts/build.mjs && node test/e2e/run.mjs",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "test:server": "node scripts/build.mjs && node test/e2e/real-server.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",

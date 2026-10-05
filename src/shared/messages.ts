@@ -18,9 +18,28 @@ export interface BackendError {
   status?: number;
 }
 
+/** Timings and server details of one request, shown in test mode. Times are Date.now() values. */
+export interface DecideMeta {
+  /** HTTP attempts, 1 when there was no retry. */
+  attempts: number;
+  /** The background worker got the request from the page. */
+  receivedAt?: number;
+  /** The request left the queue and went to the server. */
+  sentAt?: number;
+  /** The server's answer arrived. */
+  answeredAt?: number;
+  /** From Ollaya's /api/decide: time inside the server, in ms. */
+  serverTotalMs?: number;
+  serverEvalMs?: number;
+  serverLoadMs?: number;
+  inputTokens?: number;
+  /** Ollaya router choice, such as english or multilingual. */
+  route?: string;
+}
+
 export type DecideResult =
-  | { ok: true; answers: Record<string, number>; model: string; ms: number; truncated: boolean }
-  | { ok: false; error: BackendError };
+  | { ok: true; answers: Record<string, number>; model: string; ms: number; truncated: boolean; meta?: DecideMeta }
+  | { ok: false; error: BackendError; meta?: DecideMeta };
 
 export interface QueueStatus {
   inFlight: number;

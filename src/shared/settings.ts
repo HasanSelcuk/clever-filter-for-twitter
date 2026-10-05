@@ -15,7 +15,7 @@ export function defaultSettings(): Settings {
     },
     checks: [],
     rules: [],
-    pages: { home: true, search: true, profile: false, replies: true, lists: true },
+    pages: { home: true, search: true, profile: false, replies: false, lists: true },
     display: { hiddenStyle: 'label', animation: true },
     actions: {
       likeRiskAccepted: false,
@@ -24,6 +24,7 @@ export function defaultSettings(): Settings {
       gapSeconds: 5,
       dwellSeconds: 1.5,
     },
+    test: { panels: false },
   };
 }
 
