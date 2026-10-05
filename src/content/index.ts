@@ -336,8 +336,10 @@ function onScroll(): void {
 const panelHost = {
   settings: () => settings,
   checks: () => settings.checks,
+  activeChecks: () => checks,
   answers: answersFor,
   trace: getTrace,
+  revealed: (id: string) => revealed.has(id),
   maxFailures: MAX_FAILURES,
 };
 

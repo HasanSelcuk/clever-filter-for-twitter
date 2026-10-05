@@ -1,28 +1,28 @@
 /**
- * Test mode: a details panel next to every post on screen. It shows the post's status, the
- * probability for each check, how each rule decided, and when each step happened.
- * The panels live in one fixed layer on <body>, outside X's own markup.
+ * Test mode: a small status button beside every post on screen. It shows a tick when the post
+ * was checked and passed, a cross when a rule hid it, and a ring while it waits. Pressing it opens
+ * a card with the probabilities, the rule results and the timings.
+ * Everything lives in one fixed layer on <body>, outside X's own markup.
  */
-import { ACTION_LABELS, evaluate, type Answers } from '../shared/rules';
+import { ACTION_LABELS, decide, evaluate, type Answers } from '../shared/rules';
 import type { Check, ConditionNode, Settings } from '../shared/types';
 import { SEL } from './dom';
 import { visibleMsNow, type Trace } from './trace';
 
 export interface PanelHost {
   settings(): Settings;
+  /** Every check, for names. */
   checks(): Check[];
+  /** The checks enabled rules ask about. */
+  activeChecks(): Check[];
   answers(id: string): Answers;
   trace(id: string): Trace | undefined;
+  revealed(id: string): boolean;
   maxFailures: number;
 }
 
-const WIDTH = 300;
 const GAP = 8;
-
-let layer: HTMLElement | null = null;
-let frame = 0;
-let lastText = 0;
-const panels = new Map<string, HTMLElement>();
+const CARD_WIDTH = 320;
 
 const pad = (n: number, w = 2) => String(n).padStart(w, '0');
 
@@ -38,15 +38,48 @@ const pct = (p: number) => `${(p * 100).toFixed(1)}%`;
 
 type Line = [label: string, value: string, cls?: string];
 
-/** The status line and its color. */
-export function statusOf(t: Trace, maxFailures: number, now = Date.now()): { text: string; cls: string } {
-  if (t.skip) return { text: `Skipped: ${t.skip}`, cls: 'skip' };
+export type StatusKind = 'pass' | 'hidden' | 'action' | 'wait' | 'fail' | 'skip';
+
+export interface Status {
+  kind: StatusKind;
+  text: string;
+}
+
+export const SYMBOLS: Record<StatusKind, string> = {
+  pass: '✓',
+  hidden: '✕',
+  action: '✓',
+  wait: '',
+  fail: '!',
+  skip: '–',
+};
+
+/**
+ * Works out the status from the answers on every call, so it always matches the numbers shown.
+ */
+export function statusOf(host: PanelHost, t: Trace, now = Date.now()): Status {
+  if (t.skip) return { kind: 'skip', text: `Skipped: ${t.skip}` };
+  const checks = host.activeChecks();
+  const a = host.answers(t.id);
+  const complete = checks.length > 0 && checks.every((c) => a[c.id] !== undefined);
+  if (complete) {
+    const outcome = decide(host.settings(), a);
+    if (outcome.hide) {
+      return { kind: 'hidden', text: `${host.revealed(t.id) ? 'Shown on request, matched' : 'Hidden by'} "${outcome.hide.name}"` };
+    }
+    const act = t.actions.at(-1);
+    if (act) return { kind: 'action', text: `Checked, ${act.kind} by "${act.rule}"` };
+    if (outcome.like || outcome.bookmark) {
+      const rule = (outcome.like ?? outcome.bookmark)!;
+      return { kind: 'action', text: `Checked, ${outcome.like ? 'will like' : 'will bookmark'} once on screen ("${rule.name}")` };
+    }
+    return { kind: 'pass', text: 'Checked: no rule matched' };
+  }
   const last = t.attempts.at(-1);
-  if (t.failures >= maxFailures && last?.error) return { text: `Failed: ${last.error}`, cls: 'fail' };
-  if (last && last.doneAt === undefined) return { text: `Waiting for the server, ${ms(now - last.askedAt)}`, cls: 'wait' };
-  if (t.outcome) return { text: t.outcome, cls: t.outcomeKind ?? 'pass' };
-  if (last?.error) return { text: `Retrying after: ${last.error}`, cls: 'wait' };
-  return { text: 'Not asked yet', cls: 'wait' };
+  if (last && last.doneAt === undefined) return { kind: 'wait', text: `Waiting for the server, ${ms(now - last.askedAt)}` };
+  if (t.failures >= host.maxFailures && last?.error) return { kind: 'fail', text: `Failed: ${last.error}` };
+  if (last?.error) return { kind: 'wait', text: `Will retry. Last error: ${last.error}` };
+  return { kind: 'wait', text: 'Waiting to be sent' };
 }
 
 function conditionLines(node: ConditionNode, checks: Check[], a: Answers, depth: number, out: Line[]): void {
@@ -71,6 +104,11 @@ export function linesFor(host: PanelHost, t: Trace, now = Date.now()): Line[] {
   const lines: Line[] = [];
   const kind = [t.media.join(', '), t.hasQuote ? 'quotes a post' : ''].filter(Boolean).join(', ');
   lines.push(['post', `${t.id}${kind ? ` (${kind})` : ''}`]);
+  const answers = host.answers(t.id);
+  for (const c of host.activeChecks()) {
+    const p = answers[c.id];
+    lines.push([c.name, p === undefined ? 'no answer yet' : pct(p), 'rule']);
+  }
   lines.push(['found', clock(t.foundAt)]);
   if (t.onScreenAt) lines.push(['on screen', `${clock(t.onScreenAt)}, seen for ${ms(visibleMsNow(t, now))}`]);
 
@@ -115,25 +153,20 @@ export function linesFor(host: PanelHost, t: Trace, now = Date.now()): Line[] {
   return lines;
 }
 
-/** Short form: the probabilities and the total time. */
-export function summaryFor(host: PanelHost, t: Trace, now = Date.now()): string[] {
-  const out: string[] = [];
-  const a = host.answers(t.id);
-  const probs = host
-    .checks()
-    .filter((c) => a[c.id] !== undefined)
-    .map((c) => `${c.name} ${pct(a[c.id]!)}`);
-  if (probs.length) out.push(probs.join(' · '));
-  const last = t.attempts.at(-1);
-  const times = [`found ${clock(t.foundAt)}`];
-  if (last?.shownAt) times.push(`answer in ${ms(last.shownAt - last.askedAt)}`);
-  if (last?.meta?.serverTotalMs !== undefined) times.push(`server ${ms(last.meta.serverTotalMs)}`);
-  if (t.onScreenAt) times.push(`seen ${ms(visibleMsNow(t, now))}`);
-  out.push(times.join(' · '));
-  return out;
+interface Panel {
+  root: HTMLElement;
+  button: HTMLButtonElement;
+  card: HTMLElement;
+  body: HTMLElement;
+  copy: HTMLButtonElement;
+  open: boolean;
+  sig: string;
 }
 
-const expanded = new Set<string>();
+let layer: HTMLElement | null = null;
+let frame = 0;
+const panels = new Map<string, Panel>();
+const opened = new Set<string>();
 
 function ensureLayer(): HTMLElement {
   if (layer?.isConnected) return layer;
@@ -143,101 +176,116 @@ function ensureLayer(): HTMLElement {
   return layer;
 }
 
-function build(host: PanelHost, t: Trace, panel: HTMLElement, now: number): void {
-  const status = statusOf(t, host.maxFailures, now);
-  panel.dataset.status = status.cls;
-  const head = document.createElement('div');
-  head.className = 'cf-panel-status';
-  head.textContent = status.text;
-
-  const open = expanded.has(t.id);
-  const table = document.createElement('div');
-  table.className = open ? 'cf-panel-lines' : 'cf-panel-summary';
-  if (open) {
-    for (const [label, value, cls] of linesFor(host, t, now)) {
-      const k = document.createElement('span');
-      k.className = `cf-k${cls?.includes('rule') ? ' cf-rule' : ''}`;
-      k.textContent = label;
-      const v = document.createElement('span');
-      v.className = `cf-v${cls?.includes('yes') ? ' cf-yes' : ''}`;
-      v.textContent = value;
-      table.append(k, v);
-    }
-  } else {
-    for (const line of summaryFor(host, t, now)) {
-      const row = document.createElement('div');
-      row.textContent = line;
-      table.append(row);
-    }
-  }
-  panel.onclick = (e) => {
-    if ((e.target as Element).closest('button')) return;
-    e.stopPropagation();
-    if (expanded.has(t.id)) expanded.delete(t.id);
-    else expanded.add(t.id);
-    build(host, t, panel, Date.now());
-  };
-  panel.title = open ? 'Click to show less' : 'Click for every detail';
-
-  const text = document.createElement('div');
-  text.className = 'cf-panel-text';
-  text.textContent = t.text ? `“${t.text.length > 160 ? `${t.text.slice(0, 160)}…` : t.text}”` : '';
-
+function createPanel(host: PanelHost, id: string): Panel {
+  const root = document.createElement('div');
+  root.className = 'cf-test';
+  root.dataset.postId = id;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'cf-test-button';
+  const card = document.createElement('div');
+  card.className = 'cf-test-card';
+  const body = document.createElement('div');
   const copy = document.createElement('button');
   copy.type = 'button';
-  copy.className = 'cf-panel-copy';
+  copy.className = 'cf-test-copy';
   copy.textContent = 'Copy details';
-  copy.onclick = (e) => {
+  card.append(body, copy);
+  root.append(button, card);
+
+  const panel: Panel = { root, button, card, body, copy, open: opened.has(id), sig: '' };
+  button.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const data = { ...t, status: status.text, answers: host.answers(t.id), lines: linesFor(host, t) };
-    void navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => (copy.textContent = 'Copied'));
-  };
-  panel.replaceChildren(head, table, ...(open ? [text, copy] : []));
+    panel.open = !panel.open;
+    if (panel.open) opened.add(id);
+    else opened.delete(id);
+    panel.sig = '';
+  });
+  copy.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const t = host.trace(id);
+    if (!t) return;
+    const data = { ...t, status: statusOf(host, t).text, answers: host.answers(id), lines: linesFor(host, t) };
+    void navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {
+      copy.textContent = 'Copied';
+      setTimeout(() => (copy.textContent = 'Copy details'), 1500);
+    });
+  });
+  return panel;
 }
 
-/** Puts the panel beside its post, below the previous panel. Returns the panel's bottom edge. */
-function place(cell: HTMLElement, panel: HTMLElement, below: number): number | null {
+function fillCard(host: PanelHost, t: Trace, status: Status, body: HTMLElement, now: number): void {
+  const head = document.createElement('div');
+  head.className = 'cf-test-status';
+  head.textContent = status.text;
+  const table = document.createElement('div');
+  table.className = 'cf-test-lines';
+  for (const [label, value, cls] of linesFor(host, t, now)) {
+    const k = document.createElement('span');
+    k.className = `cf-k${cls?.includes('rule') ? ' cf-rule' : ''}`;
+    k.textContent = label;
+    const v = document.createElement('span');
+    v.className = `cf-v${cls?.includes('yes') ? ' cf-yes' : ''}`;
+    v.textContent = value;
+    table.append(k, v);
+  }
+  const text = document.createElement('div');
+  text.className = 'cf-test-text';
+  text.textContent = t.text ? `“${t.text.length > 200 ? `${t.text.slice(0, 200)}…` : t.text}”` : '';
+  body.replaceChildren(head, table, text);
+}
+
+function update(host: PanelHost, t: Trace, panel: Panel, now: number): void {
+  const status = statusOf(host, t, now);
+  // Rebuild only when something visible changed; the clock part ticks once a second.
+  const sig = `${status.kind}|${status.text}|${panel.open ? JSON.stringify(linesFor(host, t, Math.floor(now / 1000) * 1000)) : ''}`;
+  if (sig === panel.sig) return;
+  panel.sig = sig;
+  panel.root.dataset.status = status.kind;
+  panel.button.textContent = SYMBOLS[status.kind];
+  panel.button.title = `${status.text}. Press for details.`;
+  panel.button.setAttribute('aria-label', status.text);
+  panel.button.setAttribute('aria-expanded', String(panel.open));
+  panel.card.hidden = !panel.open;
+  panel.root.classList.toggle('cf-open', panel.open);
+  if (panel.open) fillCard(host, t, status, panel.body, now);
+}
+
+function place(cell: HTMLElement, panel: Panel): boolean {
   const r = cell.getBoundingClientRect();
-  if (r.bottom < -50 || r.top > innerHeight + 50 || r.height === 0) return null;
-  let left = r.right + GAP;
-  if (left + WIDTH > innerWidth - 4) left = Math.max(4, r.right - WIDTH - GAP);
-  const top = Math.max(r.top, below + 4);
-  panel.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
-  return top + panel.offsetHeight;
+  if (r.bottom < 0 || r.top > innerHeight || r.height === 0) return false;
+  const roomRight = innerWidth - r.right - GAP;
+  const left = roomRight >= 28 ? r.right + GAP : r.right - 32;
+  const top = Math.min(Math.max(r.top + 10, 4), Math.max(4, r.bottom - 30));
+  panel.root.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+  // Open the card toward the side with more room.
+  panel.root.dataset.side = innerWidth - left >= CARD_WIDTH + 8 ? 'right' : 'left';
+  return true;
 }
 
 function tick(host: PanelHost): void {
   frame = requestAnimationFrame(() => tick(host));
   const now = Date.now();
-  const refreshText = now - lastText > 250;
-  if (refreshText) lastText = now;
   const root = ensureLayer();
   const seen = new Set<string>();
-  let below = -Infinity;
   for (const cell of Array.from(document.querySelectorAll<HTMLElement>(`${SEL.cell}[data-cf-id]`))) {
     const id = cell.dataset.cfId!;
     const t = host.trace(id);
     if (!t || seen.has(id)) continue;
     let panel = panels.get(id);
     if (!panel) {
-      panel = document.createElement('div');
-      panel.className = 'cf-panel';
+      panel = createPanel(host, id);
       panels.set(id, panel);
-      root.append(panel);
-      build(host, t, panel, now);
-    } else if (refreshText && !panel.matches(':hover')) {
-      build(host, t, panel, now);
+      root.append(panel.root);
     }
-    const bottom = place(cell, panel, below);
-    if (bottom !== null) {
-      seen.add(id);
-      below = bottom;
-    }
+    update(host, t, panel, now);
+    if (place(cell, panel)) seen.add(id);
   }
   for (const [id, panel] of panels) {
     if (!seen.has(id)) {
-      panel.remove();
+      panel.root.remove();
       panels.delete(id);
     }
   }

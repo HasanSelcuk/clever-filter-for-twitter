@@ -99,6 +99,8 @@ try {
   });
 
   const page = await context.newPage();
+  page.on('crash', () => console.log('PAGE CRASHED'));
+  page.on('pageerror', (e) => console.log('PAGE ERROR', e.message));
   await page.goto('https://x.com/home');
 
   await step('AI slop gets hidden with a scan animation and a label', async () => {
@@ -142,28 +144,46 @@ try {
     assert.equal(mock.askedAbout('A fox walked past'), true, 'a video post with text is checked');
   });
 
-  await step('test mode shows a panel beside each post', async () => {
+  await step('test mode puts a status button beside each post', async () => {
     const popup = await context.newPage();
     await popup.goto(`chrome-extension://${extId}/popup.html`);
     await popup.getByLabel(/Test mode/).check();
     await popup.close();
     await page.bringToFront();
-    const panel = (status) => page.locator('.cf-panel', { has: page.locator('.cf-panel-status', { hasText: status }) });
-    await panel('Checked: passed').first().waitFor({ timeout: 5_000 });
-    await page.locator('[data-cf-id="1005"]').scrollIntoViewIfNeeded();
+    const button = (id) => page.locator(`.cf-test[data-post-id="${id}"] .cf-test-button`);
+    await button('1002').waitFor({ timeout: 5_000 });
+    await page.waitForTimeout(500);
+    assert.equal(await button('1001').textContent(), '✕', 'hidden post shows a cross');
+    assert.equal(await button('1002').textContent(), '✓', 'passed post shows a tick');
+    assert.equal(await page.locator('.cf-test[data-post-id="1003"]').getAttribute('data-status'), 'action');
 
-    await panel('Skipped: no text, video only').waitFor();
+    // A finished post never shows the waiting ring.
+    const stuck = await page.evaluate(() => {
+      const done = new Set(Array.from(document.querySelectorAll('[data-cf-state="done"]'), (c) => c.getAttribute('data-cf-id')));
+      return Array.from(document.querySelectorAll('.cf-test'))
+        .filter((p) => done.has(p.getAttribute('data-post-id')) && p.getAttribute('data-status') === 'wait')
+        .map((p) => p.getAttribute('data-post-id'));
+    });
+    assert.deepEqual(stuck, [], 'decided posts whose button still waits');
+
+    await page.locator('[data-cf-id="1005"]').scrollIntoViewIfNeeded();
+    await button('1005').waitFor();
+    assert.equal(await button('1005').textContent(), '–', 'video-only post shows a dash');
+    assert.match(await button('1005').getAttribute('title'), /Skipped: no text, video only/);
     await page.evaluate(() => scrollTo(0, 0));
-    const compact = await panel('Checked: passed').first().innerText();
-    assert.match(compact, /AI slop \d+\.\d% · Thoughtful post \d+\.\d%/);
-    assert.match(compact, /found \d\d:\d\d:\d\d\.\d{3} · answer in \d+ ms · server \d/);
-    await panel('Checked: passed').first().click();
-    const passed = await panel('Checked: passed').first().innerText();
-    for (const word of ['found', 'asked', 'sent', 'answered', 'shown', 'laya:en', 'AI slop', '(yes at 80%)']) {
-      assert.ok(passed.includes(word), `panel shows "${word}":\n${passed}`);
+
+    const card = page.locator('.cf-test[data-post-id="1002"] .cf-test-card');
+    assert.equal(await card.isVisible(), false, 'details stay closed until pressed');
+    await button('1002').click();
+    await card.waitFor();
+    const details = await card.innerText();
+    for (const word of ['Checked: no rule matched', 'AI slop', 'found', 'asked', 'sent', 'answered', 'shown', 'laya:en', '(yes at 80%)']) {
+      assert.ok(details.includes(word), `details show "${word}":\n${details}`);
     }
-    assert.match(passed, /answered\s+\d\d:\d\d:\d\d\.\d{3} \+\d+ ms \(server \d/);
+    assert.match(details, /answered\s+\d\d:\d\d:\d\d\.\d{3} \+\d+ ms \(server \d/);
     await page.screenshot({ path: join(shots, 'test-mode.png') });
+    await button('1002').click();
+    await card.waitFor({ state: 'hidden' });
   });
 
   await step('Show reveals a hidden post and Hide folds it again', async () => {

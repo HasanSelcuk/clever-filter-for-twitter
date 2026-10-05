@@ -20,16 +20,26 @@ Only a post's own text is checked. When a post quotes another post, the quoted t
 
 ### Test mode
 
-Turn on **Test mode** in the popup or in Settings. Every post on screen then gets a panel beside it:
+Turn on **Test mode** in the popup or in Settings. Every post on screen then gets a small round button beside it:
 
-- **Status:** Checked: passed, Hidden, Liked, Bookmarked, Waiting for the server, Skipped (with the reason), or Failed (with the error).
-- **Probabilities** for each check, and how long the answer took.
-- **Click the panel** for every detail:
-  - when the post appeared in the page, when it came on screen, and how long it stayed there
-  - when it was asked, sent, answered and shown
-  - the server's own time, the model time, the model, the route and the token count
-  - how each rule and each condition decided
-- **Copy details** puts all of it on the clipboard as JSON.
+- **✓ green:** checked, no rule matched.
+- **✕ red:** a rule hid it.
+- **✓ blue:** a like or bookmark rule matched.
+- **Spinning ring:** waiting for the server.
+- **– gray:** skipped. Hover the button to see why.
+- **! dark red:** failed. Hover the button to see the error.
+
+The status comes from the answers each time the button draws, so it always matches the numbers.
+
+Press the button for the details card:
+
+- the probability for each check
+- when the post appeared in the page, when it came on screen, and how long it stayed there
+- when it was asked, sent, answered and shown
+- the server's own time, the model time, the model, the route and the token count
+- how each rule and each condition decided
+
+**Copy details** puts all of it on the clipboard as JSON.
 
 A post whose request fails three times in a row is marked Failed and left as X shows it, until the settings change. The page also gives up on any single answer after 60 seconds, so no post can wait forever.
 
