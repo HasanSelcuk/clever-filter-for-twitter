@@ -1,0 +1,143 @@
+/* Clever Filter: styles for X timeline cells. Every rule is keyed on a data-cf-* attribute. */
+
+[data-testid="cellInnerDiv"][data-cf-state],
+[data-testid="cellInnerDiv"][data-cf-view],
+[data-testid="cellInnerDiv"][data-cf-flash] {
+  --cf-accent: rgb(29, 155, 240);
+  --cf-muted: rgb(113, 118, 123);
+}
+
+/* Checking: a thin bar slides along the top edge of the post. */
+html[data-cf-animate] [data-testid="cellInnerDiv"][data-cf-state="checking"]::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 30%;
+  background: var(--cf-accent);
+  opacity: 0.55;
+  pointer-events: none;
+  animation: cf-slide 0.9s ease-in-out infinite;
+}
+
+@keyframes cf-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(340%); }
+}
+
+/* Filtering: a scan line sweeps down the post while it fades. */
+[data-testid="cellInnerDiv"][data-cf-view="hiding"]::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 56px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(29, 155, 240, 0), rgba(29, 155, 240, 0.16));
+  border-bottom: 2px solid var(--cf-accent);
+  animation: cf-scan 0.65s ease-out forwards;
+}
+
+[data-testid="cellInnerDiv"][data-cf-view="hiding"] > :not(.cf-label) {
+  filter: grayscale(1);
+  opacity: 0.45;
+  transition: opacity 0.4s ease, filter 0.4s ease;
+}
+
+@keyframes cf-scan {
+  from { transform: translateY(-56px); opacity: 1; }
+  85% { opacity: 1; }
+  to { transform: translateY(var(--cf-scan-end, 260px)); opacity: 0; }
+}
+
+[data-testid="cellInnerDiv"][data-cf-view="hiding"] > .cf-label { display: none; }
+
+/* Hidden: only the label stays. */
+[data-testid="cellInnerDiv"][data-cf-view="hidden"] > :not(.cf-label),
+[data-testid="cellInnerDiv"][data-cf-view="removed"] > * {
+  display: none !important;
+}
+
+.cf-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--cf-muted);
+  border-bottom: 1px solid rgba(113, 118, 123, 0.25);
+}
+
+html[data-cf-animate] [data-cf-view="hidden"] > .cf-label {
+  animation: cf-fade-in 0.25s ease-out;
+}
+
+@keyframes cf-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.cf-label-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-label-button {
+  flex: none;
+  padding: 2px 12px;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  background: transparent;
+  border: 1px solid rgba(113, 118, 123, 0.5);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.cf-label-button:hover { background: rgba(113, 118, 123, 0.12); }
+
+[data-testid="cellInnerDiv"][data-cf-view="revealed"] > .cf-label {
+  border-bottom-style: dashed;
+}
+
+/* After a like or bookmark: a short note in the corner of the post. */
+[data-testid="cellInnerDiv"][data-cf-flash]::before {
+  content: attr(data-cf-flash);
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 12px;
+  padding: 2px 10px;
+  font-size: 13px;
+  line-height: 20px;
+  color: #fff;
+  background: var(--cf-accent);
+  border-radius: 999px;
+  pointer-events: none;
+  animation: cf-note 2.2s ease forwards;
+}
+
+@keyframes cf-note {
+  0% { opacity: 0; transform: translateY(-4px); }
+  10% { opacity: 1; transform: none; }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-testid="cellInnerDiv"][data-cf-state="checking"]::before,
+  [data-testid="cellInnerDiv"][data-cf-view="hiding"]::after,
+  [data-testid="cellInnerDiv"][data-cf-flash]::before {
+    animation: none !important;
+    display: none;
+  }
+}
